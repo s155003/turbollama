@@ -3,6 +3,7 @@
 #ifndef NEONFORGE_KERNELS_H
 #define NEONFORGE_KERNELS_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
