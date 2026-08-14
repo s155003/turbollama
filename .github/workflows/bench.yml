@@ -1,0 +1,58 @@
+name: Arm64 benchmark
+
+# Runs on GitHub's free native Arm64 runners for public repos.
+# Anyone -- including a judge who owns no Arm hardware -- can reproduce every
+# number in the README by pressing "Run workflow" on the Actions tab.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  arm64:
+    name: kernels on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04-arm]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Identify the silicon
+        run: |
+          echo "## Hardware" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          uname -srm | tee -a $GITHUB_STEP_SUMMARY
+          lscpu | grep -Ei 'architecture|model name|bogomips|^cpu\(s\)|implementer|part' \
+            | tee -a $GITHUB_STEP_SUMMARY
+          echo "--- hwcaps ---" | tee -a $GITHUB_STEP_SUMMARY
+          grep -m1 '^Features' /proc/cpuinfo | tr ' ' '\n' \
+            | grep -Ex 'asimd|asimddp|i8mm|bf16|sve|sve2|fphp' | tr '\n' ' ' \
+            | tee -a $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Toolchain
+        run: |
+          gcc --version | head -1
+          make info
+
+      - name: Build
+        run: make bench
+
+      - name: Kernel benchmark + bit-exactness check
+        run: |
+          echo "## Kernel benchmark" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          ./build/bench_kernel 64 | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neonforge-results-${{ matrix.runner }}
+          path: results/
+          if-no-files-found: ignore

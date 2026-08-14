@@ -1,0 +1,23 @@
+NeonForge builds on third-party open source. Both are MIT licensed, and both
+remain MIT licensed here.
+
+--------------------------------------------------------------------------
+llama2.c -- https://github.com/karpathy/llama2.c
+Copyright (c) 2023 Andrej Karpathy
+MIT License (full text in vendor/LICENSE_llama2c)
+
+  vendor/run.c and vendor/runq.c are unmodified upstream copies, kept in the
+  tree so the optimization baseline is auditable rather than described.
+
+  src/runq_nf.c is a derivative of vendor/runq.c. The transformer, tokenizer
+  and sampler are upstream; NeonForge replaces the matmul call sites with the
+  dispatching kernels in src/kernels*.c and adds a batched prefill path plus
+  timing instrumentation. Every edit is marked with a "NEONFORGE:" comment.
+
+--------------------------------------------------------------------------
+TinyLlama / TinyStories checkpoints -- https://huggingface.co/karpathy/tinyllamas
+Copyright (c) 2023 Andrej Karpathy
+MIT License
+
+  Model weights are downloaded at build time, not vendored. tools/quantize.py
+  converts the published fp32 checkpoints to the int8 v2 format locally.
