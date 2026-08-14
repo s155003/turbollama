@@ -32,7 +32,7 @@ CORE_SRC := src/kernels_scalar.c src/kernels_dot.c src/kernels_i8mm.c src/dispat
 CORE_OBJ := $(CORE_SRC:%.c=$(BUILD)/%.o)
 
 .PHONY: all bench runq test clean info
-all: bench
+all: bench runq
 
 $(BUILD)/src/kernels_dot.o: src/kernels_dot.c src/kernels.h
 	@mkdir -p $(dir $@)

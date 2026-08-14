@@ -10,7 +10,7 @@ on:
 
 jobs:
   arm64:
-    name: kernels on ${{ matrix.runner }}
+    name: NeonForge on ${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -22,17 +22,17 @@ jobs:
 
       - name: Identify the silicon
         run: |
-          echo "## Hardware" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          uname -srm | tee -a $GITHUB_STEP_SUMMARY
-          lscpu | grep -Ei 'architecture|model name|bogomips|^cpu\(s\)|implementer|part' \
-            | tee -a $GITHUB_STEP_SUMMARY
-          echo "--- hwcaps ---" | tee -a $GITHUB_STEP_SUMMARY
-          grep -m1 '^Features' /proc/cpuinfo | tr ' ' '\n' \
-            | grep -Ex 'asimd|asimddp|i8mm|bf16|sve|sve2|fphp' | tr '\n' ' ' \
-            | tee -a $GITHUB_STEP_SUMMARY
-          echo '' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Hardware"
+            echo '```'
+            uname -srm
+            lscpu | grep -Ei 'architecture|model name|^cpu\(s\)|implementer|part'
+            printf 'features: '
+            grep -m1 '^Features' /proc/cpuinfo | tr ' ' '\n' \
+              | grep -Ex 'asimd|asimddp|i8mm|bf16|sve|sve2' | tr '\n' ' '
+            echo
+            echo '```'
+          } | tee -a $GITHUB_STEP_SUMMARY
 
       - name: Toolchain
         run: |
@@ -40,14 +40,62 @@ jobs:
           make info
 
       - name: Build
-        run: make bench
+        run: make all
 
-      - name: Kernel benchmark + bit-exactness check
+      - name: Kernel benchmark + bit-exactness
         run: |
-          echo "## Kernel benchmark" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Kernel microbenchmark"
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
           ./build/bench_kernel 64 | tee -a $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Cache fp32 checkpoint
+        id: cache-model
+        uses: actions/cache@v4
+        with:
+          path: stories15M.bin
+          key: stories15M-fp32-v1
+
+      - name: Fetch model + tokenizer
+        run: |
+          if [ ! -f stories15M.bin ]; then
+            curl -fsSL -o stories15M.bin \
+              https://huggingface.co/karpathy/tinyllamas/resolve/main/stories15M.bin
+          fi
+          curl -fsSL -o tokenizer.bin \
+            https://github.com/karpathy/llama2.c/raw/master/tokenizer.bin
+          ls -la stories15M.bin tokenizer.bin
+
+      - name: Quantize fp32 -> int8 (no PyTorch)
+        run: |
+          python3 -m pip install --quiet --break-system-packages numpy
+          {
+            echo "## Quantization"
+            echo '```'
+            python3 tools/quantize.py stories15M.bin stories15M_q80.bin --group-size 64
+            echo '```'
+          } | tee -a $GITHUB_STEP_SUMMARY
+
+      - name: End-to-end model benchmark
+        run: |
+          chmod +x scripts/e2e_bench.sh
+          {
+            echo "## End-to-end (stories15M, int8)"
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+          ./scripts/e2e_bench.sh | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Sample output
+        run: |
+          {
+            echo "## Generated text (temperature 0, identical across kernels)"
+            echo '```'
+            cat results/text_scalar.txt
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
 
       - name: Upload results
         if: always()
