@@ -91,13 +91,23 @@ def main():
     gs = args.group_size
     n_layers = cfg["n_layers"]
 
-    # Every quantized tensor must divide evenly by the group size; shrink until
-    # it does, exactly like upstream export.py.
+    # Upstream export.py only checks that each tensor's *total* element count
+    # divides by the group size. That is not sufficient. The matmul walks each
+    # row with `for (j = 0; j <= n - GS; j += GS)`, so if the group size does
+    # not divide the row length n, the trailing n % GS values of every row are
+    # silently dropped -- and the scale index (i*n + j)/GS drifts out of
+    # alignment with the row it belongs to.
+    #
+    # stories15M trips exactly this: dim=288 with the default group size 64
+    # leaves 288 % 64 = 32 values per row unread. So we additionally require
+    # the group size to divide every `n` that a matmul is actually called with:
+    # dim (wq/wk/wv/wo/w1/w3/wcls) and hidden_dim (w2).
     per_layer = [w["wq"].size // n_layers, w["wk"].size // n_layers,
                  w["wv"].size // n_layers, w["wo"].size // n_layers,
                  w["w1"].size // n_layers, w["w2"].size // n_layers,
                  w["w3"].size // n_layers, w["tok"].size, w["wcls"].size]
-    while any(s % gs != 0 for s in per_layer):
+    row_lengths = [cfg["dim"], cfg["hidden_dim"]]
+    while any(s % gs != 0 for s in per_layer) or any(r % gs != 0 for r in row_lengths):
         gs //= 2
         if gs < 1:
             sys.exit("error: no usable group size for this checkpoint")

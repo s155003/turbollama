@@ -54,7 +54,13 @@ static stat_t summarize(double *v, int n) {
     return s;
 }
 
-#define TRIALS 7
+// Emulated runs (QEMU, no Arm hardware) only need to prove correctness, and a
+// full timing sweep under emulation takes minutes. NEONFORGE_QUICK=1 trims the
+// trial count and the shape list; timings from such a run are meaningless and
+// the harness says so.
+#define MAX_TRIALS 16
+static int TRIALS = 7;
+static int quick = 0;
 
 typedef void (*mv_fn)(float *, const NFQTensor *, const NFQTensor *, int, int, int);
 typedef void (*mm_fn)(float *, const NFQTensor *, const NFQTensor *, int, int, int, int);
@@ -82,11 +88,17 @@ static void check_exact(const char *label, const float *ref, const float *got, s
 }
 
 static void bench_matvec(int n, int d, int gs) {
+    // Precondition shared with llama2.c: the group size must divide the row
+    // length, or the trailing n % gs values of each row are never visited.
+    if (n % gs != 0) {
+        printf("  matvec  n=%d skipped: group size %d does not divide n\n", n, gs);
+        return;
+    }
     NFQTensor w = alloc_qt((size_t) n * d, gs);
     NFQTensor x = alloc_qt((size_t) n, gs);
     float *ref = malloc(d * sizeof(float));
     float *got = malloc(d * sizeof(float));
-    double t[TRIALS];
+    double t[MAX_TRIALS];
 
     printf("  matvec  W(%d x %d) @ x(%d)   [decode / tokens-per-second path]\n", d, n, n);
 
@@ -118,11 +130,15 @@ static void bench_matvec(int n, int d, int gs) {
 }
 
 static void bench_gemm(int m, int n, int d, int gs) {
+    if (n % gs != 0) {
+        printf("  gemm    n=%d skipped: group size %d does not divide n\n", n, gs);
+        return;
+    }
     NFQTensor w = alloc_qt((size_t) n * d, gs);
     NFQTensor x = alloc_qt((size_t) m * n, gs);
     float *ref = malloc((size_t) m * d * sizeof(float));
     float *got = malloc((size_t) m * d * sizeof(float));
-    double t[TRIALS];
+    double t[MAX_TRIALS];
 
     printf("  gemm    W(%d x %d) @ X(%d x %d)^T   [prefill / time-to-first-token path]\n",
            d, n, m, n);
@@ -169,10 +185,20 @@ static void bench_gemm(int m, int n, int d, int gs) {
 }
 
 int main(int argc, char **argv) {
-    int gs = 64;
+    // 32 is the largest power of two dividing stories15M's dim of 288, which is
+    // what tools/quantize.py settles on for that checkpoint.
+    int gs = 32;
     if (argc > 1) gs = atoi(argv[1]);
 
+    const char *q = getenv("NEONFORGE_QUICK");
+    if (q && *q && strcmp(q, "0") != 0) { quick = 1; TRIALS = 1; }
+
     printf("NeonForge kernel benchmark\n");
+    if (quick) {
+        printf("  MODE       : QUICK -- correctness only.\n");
+        printf("               Timings below are NOT valid performance data\n");
+        printf("               (1 trial, and typically run under emulation).\n");
+    }
     printf("  group size : %d\n", gs);
     printf("  dotprod    : %s\n", nf_cpu_has_dotprod() ? "yes" : "no");
     printf("  i8mm       : %s\n", nf_cpu_has_i8mm() ? "yes" : "no");
@@ -190,17 +216,30 @@ int main(int argc, char **argv) {
         { 2048, 768,  "110M ffn  down" },
     };
 
-    for (size_t i = 0; i < sizeof(shapes) / sizeof(shapes[0]); i++) {
+    size_t nshapes = sizeof(shapes) / sizeof(shapes[0]);
+    if (quick) nshapes = 2;  // emulation is slow; two shapes prove correctness
+
+    for (size_t i = 0; i < nshapes; i++) {
         printf("== %s ==\n", shapes[i].tag);
         bench_matvec(shapes[i].n, shapes[i].d, gs);
         printf("\n");
     }
 
-    for (size_t i = 0; i < sizeof(shapes) / sizeof(shapes[0]); i++) {
+    for (size_t i = 0; i < nshapes; i++) {
         printf("== %s (batched) ==\n", shapes[i].tag);
         bench_gemm(16, shapes[i].n, shapes[i].d, gs);
         printf("\n");
     }
+
+    // The i8mm kernel tiles 2x2 and hands odd leftovers to the SDOT path.
+    // Those tail branches are the easiest place to get an off-by-one, so
+    // exercise odd row counts on both sides explicitly.
+    printf("== edge cases: odd batch / odd output rows ==\n");
+    bench_gemm(5, 256, 288, gs);   // odd m
+    bench_gemm(4, 256, 289, gs);   // odd d
+    bench_gemm(3, 256, 287, gs);   // both odd
+    bench_gemm(1, 256, 288, gs);   // degenerate batch of one
+    printf("\n");
 
     if (failures) {
         printf("FAILED: %d correctness check(s) did not match scalar\n", failures);

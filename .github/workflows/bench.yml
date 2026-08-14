@@ -48,7 +48,7 @@ jobs:
             echo "## Kernel microbenchmark"
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
-          ./build/bench_kernel 64 | tee -a $GITHUB_STEP_SUMMARY
+          ./build/bench_kernel 32 | tee -a $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Cache fp32 checkpoint

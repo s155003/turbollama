@@ -1,5 +1,4 @@
 build/
 *.o
 *.bin
-!tokenizer.bin
 results/

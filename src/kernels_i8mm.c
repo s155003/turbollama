@@ -61,10 +61,17 @@ void nf_gemm_i8mm(float *out, const NFQTensor *x, const NFQTensor *w,
                 int32x4_t acc = vaddq_s32(acc0, acc1);
 
                 // acc = [ x0.w0, x0.w1, x1.w0, x1.w1 ]
-                v00 += (float) vgetq_lane_s32(acc, 0) * t0[g] * s0[g];
-                v01 += (float) vgetq_lane_s32(acc, 1) * t0[g] * s1[g];
-                v10 += (float) vgetq_lane_s32(acc, 2) * t1[g] * s0[g];
-                v11 += (float) vgetq_lane_s32(acc, 3) * t1[g] * s1[g];
+                //
+                // Multiply by the WEIGHT scale first, then the activation
+                // scale. Float multiplication is not associative, so the
+                // baseline's (ival * w_s) * x_s and a transposed
+                // (ival * x_s) * w_s disagree in the low bits -- enough to
+                // break bit-exactness and, at temperature 0, eventually
+                // divert token sampling. Match the baseline's order exactly.
+                v00 += (float) vgetq_lane_s32(acc, 0) * s0[g] * t0[g];
+                v01 += (float) vgetq_lane_s32(acc, 1) * s1[g] * t0[g];
+                v10 += (float) vgetq_lane_s32(acc, 2) * s0[g] * t1[g];
+                v11 += (float) vgetq_lane_s32(acc, 3) * s1[g] * t1[g];
             }
 
             out[(size_t)  r      * d +  i     ] = v00;
