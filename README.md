@@ -34,7 +34,39 @@ still exploits `SMMLA` on a Neoverse server part.
 > [Reproducing this](#reproducing-this).
 
 <!-- RESULTS:BEGIN -->
-_Populated from the latest CI run._
+Hardware: **Arm Neoverse-N2**, `asimddp i8mm bf16 sve sve2`, group size 32,
+single-threaded. [Run 31848160035](https://github.com/s155003/neonforge/actions/runs/31848160035).
+
+**End-to-end, stories15M int8** — same binary, same weights, same seed:
+
+| kernel | time to first token | decode tok/s | speedup |
+|---|---|---|---|
+| `scalar` | 18.00 ms | 471.94 | 1.00x |
+| `dotprod` | 14.00 ms | 562.31 | **1.19x** |
+
+Generated text is **byte-identical** between the two.
+
+**Prefill-shaped GEMM (batch of 16)** — where `SMMLA` earns its keep:
+
+| shape | scalar | dotprod | i8mm | i8mm vs scalar |
+|---|---|---|---|---|
+| 288x288 | 16.21 | 20.16 | **53.27** | **3.29x** |
+| 768x288 | 16.21 | 20.15 | **53.16** | **3.27x** |
+| 288x768 | 15.98 | 19.76 | **52.06** | **3.27x** |
+| 768x768 | 15.95 | 19.66 | **51.76** | **3.23x** |
+| 2048x768 | 15.87 | 19.68 | **50.70** | **3.17x** |
+
+GOP/s, higher is better.
+
+**Decode-shaped matvec** — `SDOT` gains 5-25%, and that ceiling is the
+honest result: a matrix-vector product streams the entire weight matrix
+with no reuse, so it is memory-bound, not compute-bound. GCC already
+auto-vectorizes the scalar loop to ~16 GOP/s. `SDOT` lifts arithmetic
+throughput to ~20 GOP/s and then memory bandwidth caps it. This is why
+the batched numbers above are 3x and these are not.
+
+**Model size:** 60.82 MB fp32 → 17.10 MB int8, **3.56x smaller**, max
+absolute quantization error 0.002333.
 <!-- RESULTS:END -->
 
 ## Why `i8mm` is not used for decode
