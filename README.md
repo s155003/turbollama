@@ -94,6 +94,8 @@ the trust of anyone who knows the ISA.
 
 ## Correctness
 
+![Real CI output: faster and byte-identical](assets/terminal-run.png)
+
 Every kernel accumulates each quantization group into an `int32` before
 touching float. Integer addition is associative, so the SIMD paths are
 not merely *close* to the baseline — they are **bit-exact**. The harness

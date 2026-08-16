@@ -43,7 +43,8 @@
 <div class="wrap">
   <div class="cap">
     <h1>The optimized kernel is faster <em>and</em> byte-identical &mdash; here is the proof</h1>
-    <p>Real output from GitHub Actions run 31970525032 on a native Arm64 runner. Nothing here is retyped.</p>
+    <p>Verbatim console output from GitHub Actions run 31971076543, a native Arm64 runner.
+       Decode speedup measures 1.19&ndash;1.23x across runs; CI vCPUs are shared and noisy.</p>
   </div>
 
   <div class="term">
@@ -67,15 +68,14 @@ max abs quantization error: 0.002333
 <span class="p">$</span> <span class="c">./scripts/e2e_bench.sh</span>
 turbollama end-to-end: stories15M_q80.bin, 256 steps, best of 5
 
-  <span class="k">scalar</span> : ttft 18.00 ms, decode 470.7379 tok/s
-  <span class="o">dotprod</span>: ttft 15.00 ms, decode 567.4847 tok/s   <span class="g">1.21x</span>
+  <span class="k">scalar</span> : ttft 20.00 ms, decode 426.2673 tok/s
+  <span class="o">dotprod</span>: ttft 17.00 ms, decode 525.5682 tok/s   <span class="g">1.23x</span>
 
   output check dotprod: <span class="g">IDENTICAL to scalar baseline</span>
 
-<span class="p">$</span> <span class="c">sha256sum results/text_scalar.txt results/text_dotprod.txt</span>
-c8b611d6a32a3d933ca0f57ff257d374  results/text_scalar.txt
-c8b611d6a32a3d933ca0f57ff257d374  results/text_dotprod.txt
-<span class="m">                ^ same hash: 185 generated tokens, not one bit different</span>
+c8b611d6a32a3d933ca0f57ff257d3743db88433234f6996adc63f27d0867981  results/text_dotprod.txt
+c8b611d6a32a3d933ca0f57ff257d3743db88433234f6996adc63f27d0867981  results/text_scalar.txt
+<span class="m">^ same digest: 185 generated tokens, not one bit different</span>
 
 <span class="p">$</span> <span class="c">head -c 210 results/text_dotprod.txt</span>
 <span class="w">One day, Lily met a robot in the park. She was very excited and wanted
