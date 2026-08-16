@@ -1,0 +1,119 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>NeonForge runtime dispatch</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --series-1:       #2a78d6;
+    --series-2:       #eb6834;
+    --series-3:       #1baf7a;
+    width: 1200px; height: 700px;
+    background: var(--surface-1);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .title    { font-size: 26px; font-weight: 650; fill: var(--text-primary); }
+  .subtitle { font-size: 15px; fill: var(--text-secondary); }
+  .boxhead  { font-size: 16px; font-weight: 650; fill: var(--text-primary); }
+  .boxsub   { font-size: 13px; fill: var(--text-secondary); }
+  .mono     { font-size: 13px; fill: var(--text-secondary);
+              font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  .cap      { font-size: 13px; fill: var(--text-muted); }
+  .route    { font-size: 13px; fill: var(--text-secondary); }
+  .foot     { font-size: 12px; fill: var(--text-muted); }
+</style>
+<div class="viz-root"><svg id="c" width="1200" height="700"></svg></div>
+<script>
+const svg = document.getElementById("c");
+const ns = "http://www.w3.org/2000/svg";
+const el = (n, a) => { const e = document.createElementNS(ns, n);
+  for (const k in a) e.setAttribute(k, a[k]); return e; };
+const add = e => (svg.appendChild(e), e);
+const txt = (s, a, cls) => { const t = el("text", a); if (cls) t.setAttribute("class", cls);
+  t.textContent = s; return add(t); };
+
+// arrowhead
+const defs = add(el("defs", {}));
+const mk = el("marker", { id: "ah", viewBox: "0 0 10 10", refX: 9, refY: 5,
+  markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" });
+mk.appendChild(el("path", { d: "M0,0 L10,5 L0,10 z", fill: "var(--baseline)" }));
+defs.appendChild(mk);
+
+const box = (x, y, w, h, stroke, sw) => add(el("rect", { x, y, width: w, height: h, rx: 10,
+  fill: "var(--surface-1)", stroke: stroke || "var(--baseline)", "stroke-width": sw || 1.5 }));
+const arrow = (x1, y1, x2, y2) => add(el("line", { x1, y1, x2, y2,
+  stroke: "var(--baseline)", "stroke-width": 1.5, "marker-end": "url(#ah)" }));
+
+txt("One binary, three kernels, chosen at runtime", { x: 74, y: 46 }, "title");
+txt("No separate builds and no #ifdef at the call site - the program asks the kernel what the CPU can do, then dispatches.",
+    { x: 74, y: 74 }, "subtitle");
+
+// --- node 1: the binary ---
+box(455, 108, 290, 62);
+txt("build/runq_nf", { x: 600, y: 132, "text-anchor": "middle" }, "boxhead");
+txt("a single compiled artifact", { x: 600, y: 154, "text-anchor": "middle" }, "boxsub");
+
+arrow(600, 170, 600, 202);
+
+// --- node 2: the probe ---
+box(400, 204, 400, 74);
+txt("startup capability probe", { x: 600, y: 228, "text-anchor": "middle" }, "boxhead");
+txt("getauxval(AT_HWCAP) / AT_HWCAP2", { x: 600, y: 252, "text-anchor": "middle" }, "mono");
+txt("HWCAP_ASIMDDP  ·  HWCAP2_I8MM", { x: 600, y: 270, "text-anchor": "middle" }, "cap");
+
+// --- fan out ---
+const COLS = [
+  { cx: 220, color: "var(--series-1)", cpu: "Armv8.0 core",
+    capline: "no dotprod, no i8mm", kernel: "scalar",
+    file: "kernels_scalar.c", flags: "-O3  (no -march)" },
+  { cx: 600, color: "var(--series-2)", cpu: "Armv8.2 core",
+    capline: "asimddp", kernel: "SDOT",
+    file: "kernels_dot.c", flags: "-march=armv8.2-a+dotprod" },
+  { cx: 980, color: "var(--series-3)", cpu: "Armv8.6 core",
+    capline: "asimddp + i8mm", kernel: "SMMLA",
+    file: "kernels_i8mm.c", flags: "-march=armv8.2-a+i8mm" },
+];
+
+add(el("line", { x1: 220, x2: 980, y1: 306, y2: 306,
+  stroke: "var(--baseline)", "stroke-width": 1.5 }));
+add(el("line", { x1: 600, x2: 600, y1: 278, y2: 306,
+  stroke: "var(--baseline)", "stroke-width": 1.5 }));
+
+COLS.forEach(c => {
+  arrow(c.cx, 306, c.cx, 336);
+
+  // detected CPU
+  box(c.cx - 155, 338, 310, 60);
+  txt(c.cpu, { x: c.cx, y: 362, "text-anchor": "middle" }, "boxhead");
+  txt(c.capline, { x: c.cx, y: 383, "text-anchor": "middle" }, "cap");
+
+  arrow(c.cx, 398, c.cx, 428);
+
+  // kernel chosen
+  box(c.cx - 155, 430, 310, 92, c.color, 2.5);
+  add(el("circle", { cx: c.cx - 128, cy: 456, r: 6, fill: c.color }));
+  txt(c.kernel, { x: c.cx - 112, y: 462 }, "boxhead");
+  txt(c.file,  { x: c.cx, y: 486, "text-anchor": "middle" }, "mono");
+  txt(c.flags, { x: c.cx, y: 508, "text-anchor": "middle" }, "cap");
+});
+
+// --- the routing subtlety ---
+box(220, 560, 760, 78, "var(--baseline)", 1.5);
+txt("On an Armv8.6 core the choice is still per-phase, not per-chip:",
+    { x: 600, y: 586, "text-anchor": "middle" }, "route");
+txt("prefill (>= 2 token rows) -> SMMLA", { x: 560, y: 612, "text-anchor": "end" }, "mono");
+add(el("line", { x1: 600, x2: 600, y1: 598, y2: 618,
+  stroke: "var(--gridline)", "stroke-width": 1.5 }));
+txt("decode (1 token row) -> SDOT", { x: 640, y: 612 }, "mono");
+txt("SMMLA computes a 2x2 tile per issue; with one activation row half the operand is padding, so it cannot win.",
+    { x: 600, y: 630, "text-anchor": "middle" }, "cap");
+
+txt("Every path is bit-exact against the scalar baseline - integer group accumulation makes exact equality achievable, "
+  + "so the tests assert it rather than a tolerance.", { x: 74, y: 672 }, "foot");
+</script>

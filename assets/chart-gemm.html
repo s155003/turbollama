@@ -1,0 +1,117 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>NeonForge prefill GEMM throughput</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --series-1:       #2a78d6;  /* scalar  */
+    --series-2:       #eb6834;  /* dotprod */
+    --series-3:       #1baf7a;  /* i8mm    */
+    width: 1200px; height: 700px;
+    background: var(--surface-1);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    position: relative;
+  }
+  .title    { font-size: 26px; font-weight: 650; fill: var(--text-primary); }
+  .subtitle { font-size: 15px; fill: var(--text-secondary); }
+  .axis     { font-size: 13px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .grouplab { font-size: 14px; fill: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .vallab   { font-size: 13px; fill: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .vallab.hi{ font-size: 14px; font-weight: 650; fill: var(--text-primary); }
+  .legtext  { font-size: 14px; fill: var(--text-primary); }
+  .legnote  { font-size: 13px; fill: var(--text-muted); }
+  .foot     { font-size: 12px; fill: var(--text-muted); }
+  .ylabel   { font-size: 13px; fill: var(--text-muted); }
+</style>
+<div class="viz-root"><svg id="c" width="1200" height="700"></svg></div>
+<script>
+// GOP/s is derived from the fastest of 7 trials; `mult` is the speedup the
+// harness itself reports, which it computes from the MEDIAN of 7. The two are
+// different statistics, so mult deliberately is not GOP/s(i8mm)/GOP/s(scalar) --
+// quoting a ratio the tool never printed would be worse than the mismatch.
+const SHAPES = [
+  { tag: "288x288",  scalar: 16.21, dotprod: 20.16, i8mm: 53.27, mult: "3.29x" },
+  { tag: "768x288",  scalar: 16.21, dotprod: 20.15, i8mm: 53.16, mult: "3.27x" },
+  { tag: "288x768",  scalar: 15.98, dotprod: 19.76, i8mm: 52.06, mult: "3.27x" },
+  { tag: "768x768",  scalar: 15.95, dotprod: 19.66, i8mm: 51.76, mult: "3.23x" },
+  { tag: "2048x768", scalar: 15.87, dotprod: 19.68, i8mm: 50.70, mult: "3.17x" },
+];
+const SERIES = [
+  { key: "scalar",  label: "scalar baseline", note: "stock -O3, no -march", color: "var(--series-1)" },
+  { key: "dotprod", label: "SDOT",            note: "Armv8.2",              color: "var(--series-2)" },
+  { key: "i8mm",    label: "SMMLA",           note: "Armv8.6",              color: "var(--series-3)" },
+];
+
+const W = 1200, H = 700;
+const M = { top: 132, right: 34, bottom: 104, left: 74 };
+const PW = W - M.left - M.right, PH = H - M.top - M.bottom;
+const YMAX = 60, TICKS = [0, 10, 20, 30, 40, 50, 60];
+const svg = document.getElementById("c");
+const ns = "http://www.w3.org/2000/svg";
+const el = (n, a) => { const e = document.createElementNS(ns, n);
+  for (const k in a) e.setAttribute(k, a[k]); return e; };
+const txt = (s, a, cls) => { const t = el("text", a); if (cls) t.setAttribute("class", cls);
+  t.textContent = s; svg.appendChild(t); return t; };
+const y = v => M.top + PH - (v / YMAX) * PH;
+
+// Bar with rounded data-end, square at the baseline.
+function bar(x, w, v, fill) {
+  const top = y(v), h = M.top + PH - top, r = Math.min(4, w / 2, h);
+  const d = `M${x},${M.top + PH} L${x},${top + r} Q${x},${top} ${x + r},${top}`
+          + ` L${x + w - r},${top} Q${x + w},${top} ${x + w},${top + r}`
+          + ` L${x + w},${M.top + PH} Z`;
+  svg.appendChild(el("path", { d, fill }));
+}
+
+txt("Prefill GEMM throughput on Arm Neoverse-N2", { x: M.left, y: 46 }, "title");
+txt("int8 group-quantized matmul, batch of 16 tokens, single-threaded. Higher is better.",
+    { x: M.left, y: 72 }, "subtitle");
+
+// legend
+let lx = M.left;
+SERIES.forEach(s => {
+  svg.appendChild(el("rect", { x: lx, y: 92, width: 13, height: 13, rx: 3, fill: s.color }));
+  const t = txt(s.label, { x: lx + 20, y: 103 }, "legtext");
+  const wlab = t.getComputedTextLength();
+  const n = txt(s.note, { x: lx + 26 + wlab, y: 103 }, "legnote");
+  lx += 20 + wlab + 26 + n.getComputedTextLength() + 8;
+});
+
+// gridlines + y axis
+TICKS.forEach(t => {
+  svg.appendChild(el("line", { x1: M.left, x2: M.left + PW, y1: y(t), y2: y(t),
+    stroke: t === 0 ? "var(--baseline)" : "var(--gridline)", "stroke-width": t === 0 ? 1.5 : 1 }));
+  txt(String(t), { x: M.left - 12, y: y(t) + 4, "text-anchor": "end" }, "axis");
+});
+txt("GOP/s", { x: M.left - 58, y: M.top + PH / 2, transform:
+  `rotate(-90 ${M.left - 58} ${M.top + PH / 2})`, "text-anchor": "middle" }, "ylabel");
+
+// bars
+const GW = PW / SHAPES.length, BW = 58, GAP = 2;
+const inner = SERIES.length * BW + (SERIES.length - 1) * GAP;
+SHAPES.forEach((sh, gi) => {
+  const gx = M.left + gi * GW + (GW - inner) / 2;
+  SERIES.forEach((s, si) => {
+    const x = gx + si * (BW + GAP), v = sh[s.key];
+    bar(x, BW, v, s.color);
+    txt(v.toFixed(2), { x: x + BW / 2, y: y(v) - 9, "text-anchor": "middle" },
+        s.key === "i8mm" ? "vallab hi" : "vallab");
+  });
+  txt(sh.tag, { x: M.left + gi * GW + GW / 2, y: M.top + PH + 26, "text-anchor": "middle" }, "grouplab");
+  txt(sh.mult + " vs scalar", { x: M.left + gi * GW + GW / 2, y: M.top + PH + 48,
+      "text-anchor": "middle" }, "foot");
+});
+
+txt("Measured on GitHub Actions ubuntu-24.04-arm (Arm Neoverse-N2, i8mm + asimddp). "
+  + "Every kernel bit-exact against the baseline. Reproducible: github.com/s155003/neonforge",
+    { x: M.left, y: H - 32 }, "foot");
+txt("Bars show GOP/s from the fastest of 7 trials; the quoted speedup is the harness's own median-of-7 figure, "
+  + "so it is not exactly the ratio of the two bars.", { x: M.left, y: H - 14 }, "foot");
+</script>

@@ -27,6 +27,8 @@ One binary. It reads `AT_HWCAP` on startup and selects the best path for
 whatever core it landed on, so it stays loadable on an Armv8.0 part and
 still exploits `SMMLA` on a Neoverse server part.
 
+![Runtime dispatch: one binary, three kernels](assets/diagram-dispatch.png)
+
 ## Results
 
 > Measured on GitHub's free native Arm64 runner (`ubuntu-24.04-arm`).
@@ -34,6 +36,8 @@ still exploits `SMMLA` on a Neoverse server part.
 > [Reproducing this](#reproducing-this).
 
 <!-- RESULTS:BEGIN -->
+![Prefill GEMM throughput on Arm Neoverse-N2](assets/chart-gemm.png)
+
 Hardware: **Arm Neoverse-N2**, `asimddp i8mm bf16 sve sve2`, group size 32,
 single-threaded. [Run 31848160035](https://github.com/s155003/neonforge/actions/runs/31848160035).
 
@@ -70,6 +74,8 @@ absolute quantization error 0.002333.
 <!-- RESULTS:END -->
 
 ## Why `i8mm` is not used for decode
+
+![Decode versus prefill: the same instruction on two workloads](assets/chart-decode-vs-prefill.png)
 
 `SMMLA` computes a 2×2 `int32` tile from two 2×8 `int8` operands — 64
 MACs per issue against `SDOT`'s 16. That's a 4× arithmetic advantage, and

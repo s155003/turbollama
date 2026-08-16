@@ -1,0 +1,128 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Why SMMLA helps prefill but not decode</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --series-1:       #2a78d6;
+    --series-2:       #eb6834;
+    --series-3:       #1baf7a;
+    width: 1200px; height: 700px;
+    background: var(--surface-1);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .title    { font-size: 26px; font-weight: 650; fill: var(--text-primary); }
+  .subtitle { font-size: 15px; fill: var(--text-secondary); }
+  .axis     { font-size: 13px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .panel    { font-size: 17px; font-weight: 650; fill: var(--text-primary); }
+  .panelsub { font-size: 13px; fill: var(--text-muted); }
+  .barlab   { font-size: 14px; fill: var(--text-secondary); }
+  .vallab   { font-size: 14px; fill: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .vallab.hi{ font-size: 16px; font-weight: 650; fill: var(--text-primary); }
+  .absent   { font-size: 13px; fill: var(--text-muted); }
+  .note     { font-size: 14px; fill: var(--text-secondary); }
+  .foot     { font-size: 12px; fill: var(--text-muted); }
+  .ylabel   { font-size: 13px; fill: var(--text-muted); }
+</style>
+<div class="viz-root"><svg id="c" width="1200" height="700"></svg></div>
+<script>
+const svg = document.getElementById("c");
+const ns = "http://www.w3.org/2000/svg";
+const el = (n, a) => { const e = document.createElementNS(ns, n);
+  for (const k in a) e.setAttribute(k, a[k]); return e; };
+const txt = (s, a, cls) => { const t = el("text", a); if (cls) t.setAttribute("class", cls);
+  t.textContent = s; svg.appendChild(t); return t; };
+
+const W = 1200, H = 700;
+const TOP = 168, BOT = 124, PH = H - TOP - BOT;
+const YMAX = 60, TICKS = [0, 10, 20, 30, 40, 50, 60];
+const y = v => TOP + PH - (v / YMAX) * PH;
+
+txt("The same instruction, two workloads", { x: 74, y: 46 }, "title");
+txt("Armv8.6 SMMLA computes a 2x2 tile per issue - so it needs two activation rows to fill. "
+  + "Prompt processing has them; token generation does not.", { x: 74, y: 74 }, "subtitle");
+txt("Arm Neoverse-N2, 768x768 int8 matmul, single-threaded. Higher is better.",
+    { x: 74, y: 98 }, "subtitle");
+
+const PANELS = [
+  { x0: 108, x1: 545, name: "DECODE", sub: "generating one token at a time (matrix x vector)",
+    bars: [
+      { lab: "scalar",  v: 15.86, c: "var(--series-1)" },
+      { lab: "SDOT",    v: 19.54, c: "var(--series-2)" },
+      { lab: "SMMLA",   v: null,  c: "var(--series-3)" },
+    ] },
+  { x0: 655, x1: 1092, name: "PREFILL", sub: "reading the prompt, 16 tokens at once (matrix x matrix)",
+    bars: [
+      { lab: "scalar",  v: 15.95, c: "var(--series-1)" },
+      { lab: "SDOT",    v: 19.66, c: "var(--series-2)" },
+      { lab: "SMMLA",   v: 51.76, c: "var(--series-3)" },
+    ] },
+];
+
+// gridlines span both panels
+TICKS.forEach(t => {
+  svg.appendChild(el("line", { x1: 108, x2: 1092, y1: y(t), y2: y(t),
+    stroke: t === 0 ? "var(--baseline)" : "var(--gridline)", "stroke-width": t === 0 ? 1.5 : 1 }));
+  txt(String(t), { x: 96, y: y(t) + 4, "text-anchor": "end" }, "axis");
+});
+txt("GOP/s", { x: 52, y: TOP + PH / 2, transform: `rotate(-90 52 ${TOP + PH / 2})`,
+  "text-anchor": "middle" }, "ylabel");
+
+function bar(x, w, v, fill) {
+  const top = y(v), h = TOP + PH - top, r = Math.min(4, w / 2, h);
+  svg.appendChild(el("path", { d:
+    `M${x},${TOP + PH} L${x},${top + r} Q${x},${top} ${x + r},${top}`
+  + ` L${x + w - r},${top} Q${x + w},${top} ${x + w},${top + r}`
+  + ` L${x + w},${TOP + PH} Z`, fill }));
+}
+
+PANELS.forEach(p => {
+  const mid = (p.x0 + p.x1) / 2, BW = 84, GAP = 22;
+  const inner = p.bars.length * BW + (p.bars.length - 1) * GAP;
+  const sx = mid - inner / 2;
+
+  txt(p.name, { x: mid, y: 138, "text-anchor": "middle" }, "panel");
+  txt(p.sub,  { x: mid, y: 159, "text-anchor": "middle" }, "panelsub");
+
+  p.bars.forEach((b, i) => {
+    const x = sx + i * (BW + GAP);
+    if (b.v === null) {
+      // absent by design: draw the footprint, not a fake value
+      svg.appendChild(el("rect", { x, y: TOP + PH - 46, width: BW, height: 46,
+        fill: "none", stroke: "var(--baseline)", "stroke-width": 1.5,
+        "stroke-dasharray": "4 4", rx: 4 }));
+      txt("no gain", { x: x + BW / 2, y: TOP + PH - 26, "text-anchor": "middle" }, "absent");
+      txt("available", { x: x + BW / 2, y: TOP + PH - 10, "text-anchor": "middle" }, "absent");
+    } else {
+      bar(x, BW, b.v, b.c);
+      txt(b.v.toFixed(2), { x: x + BW / 2, y: y(b.v) - 10, "text-anchor": "middle" },
+          b.lab === "SMMLA" ? "vallab hi" : "vallab");
+    }
+    txt(b.lab, { x: x + BW / 2, y: TOP + PH + 26, "text-anchor": "middle" }, "barlab");
+  });
+});
+
+// divider
+svg.appendChild(el("line", { x1: 600, x2: 600, y1: 124, y2: TOP + PH + 40,
+  stroke: "var(--gridline)", "stroke-width": 1 }));
+
+txt("Memory-bound: one weight fetched, used once.",
+    { x: 326, y: TOP + PH + 66, "text-anchor": "middle" }, "note");
+txt("SDOT lifts math to ~20 GOP/s, then bandwidth caps it.",
+    { x: 326, y: TOP + PH + 86, "text-anchor": "middle" }, "note");
+txt("Compute-bound: each weight reused 16 times.",
+    { x: 873, y: TOP + PH + 66, "text-anchor": "middle" }, "note");
+txt("SMMLA has room to run - 3.2x the baseline.",
+    { x: 873, y: TOP + PH + 86, "text-anchor": "middle" }, "note");
+
+txt("This is why NeonForge routes prefill to SMMLA and decode to SDOT, and reports the two phases separately "
+  + "instead of blending them into one flattering tokens/sec number.",
+    { x: 74, y: H - 20 }, "foot");
+</script>
