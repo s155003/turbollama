@@ -7,7 +7,7 @@
 # SPDX-License-Identifier: MIT
 set -euo pipefail
 
-BIN=${BIN:-./build/runq_nf}
+BIN=${BIN:-./build/runq_tl}
 MODEL=${MODEL:-stories15M_q80.bin}
 TOKENIZER=${TOKENIZER:-tokenizer.bin}
 STEPS=${STEPS:-256}
@@ -19,12 +19,12 @@ mkdir -p "$OUT"
 
 have_isa() {
   # the binary prints the ISA it selected; ask it what it can actually do
-  NEONFORGE_ISA=$1 "$BIN" "$MODEL" -z "$TOKENIZER" -t 0 -n 2 -i "hi" 2>&1 >/dev/null \
+  TURBOLLAMA_ISA=$1 "$BIN" "$MODEL" -z "$TOKENIZER" -t 0 -n 2 -i "hi" 2>&1 >/dev/null \
     | grep -q "^isa: $1$"
 }
 
 run_one() {  # $1=isa -> prints "ttft_ms tok_s"
-  NEONFORGE_ISA=$1 "$BIN" "$MODEL" -z "$TOKENIZER" -t 0 -s 42 \
+  TURBOLLAMA_ISA=$1 "$BIN" "$MODEL" -z "$TOKENIZER" -t 0 -s 42 \
       -n "$STEPS" -i "$PROMPT" \
       >"$OUT/text_$1.txt" 2>"$OUT/stderr_$1.txt"
   local ttft toks
@@ -47,7 +47,7 @@ best_of() {  # $1=isa -> prints "best_ttft best_toks"
 ISAS=(scalar)
 if have_isa dotprod; then ISAS+=(dotprod); fi
 
-echo "NeonForge end-to-end: $MODEL, $STEPS steps, best of $REPS"
+echo "turbollama end-to-end: $MODEL, $STEPS steps, best of $REPS"
 echo
 
 declare -A TTFT TOKS

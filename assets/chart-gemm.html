@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>NeonForge prefill GEMM throughput</title>
+<title>turbollama prefill GEMM throughput</title>
 <style>
   html, body { margin: 0; padding: 0; }
   .viz-root {
@@ -110,7 +110,7 @@ SHAPES.forEach((sh, gi) => {
 });
 
 txt("Measured on GitHub Actions ubuntu-24.04-arm (Arm Neoverse-N2, i8mm + asimddp). "
-  + "Every kernel bit-exact against the baseline. Reproducible: github.com/s155003/neonforge",
+  + "Every kernel bit-exact against the baseline. Reproducible: github.com/s155003/turbollama",
     { x: M.left, y: H - 32 }, "foot");
 txt("Bars show GOP/s from the fastest of 7 trials; the quoted speedup is the harness's own median-of-7 figure, "
   + "so it is not exactly the ratio of the two bars.", { x: M.left, y: H - 14 }, "foot");

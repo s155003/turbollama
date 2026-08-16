@@ -1,4 +1,4 @@
-// NeonForge: Armv8.2 SDOT (vdotq_s32) kernels.
+// turbollama: Armv8.2 SDOT (vdotq_s32) kernels.
 // Compiled with -march=armv8.2-a+dotprod. Only entered after a runtime
 // HWCAP_ASIMDDP check, so the binary still loads on Armv8.0 parts.
 // SPDX-License-Identifier: MIT
@@ -10,7 +10,7 @@
 // Accumulate one group of `gs` int8 products into an int32 sum.
 // gs is a multiple of 16 in every llama2.c checkpoint (typically 64), which
 // lets us keep four independent accumulators and hide SDOT's ~4-cycle latency.
-static inline int32_t nf_group_dot(const int8_t *a, const int8_t *b, int gs) {
+static inline int32_t tl_group_dot(const int8_t *a, const int8_t *b, int gs) {
     int32x4_t a0 = vdupq_n_s32(0), a1 = vdupq_n_s32(0);
     int32x4_t a2 = vdupq_n_s32(0), a3 = vdupq_n_s32(0);
     int k = 0;
@@ -30,7 +30,7 @@ static inline int32_t nf_group_dot(const int8_t *a, const int8_t *b, int gs) {
     return acc;
 }
 
-void nf_matmul_dot(float *xout, const NFQTensor *x, const NFQTensor *w,
+void tl_matmul_dot(float *xout, const TLQTensor *x, const TLQTensor *w,
                    int n, int d, int gs) {
     const int ng = n / gs;
     int i;
@@ -42,14 +42,14 @@ void nf_matmul_dot(float *xout, const NFQTensor *x, const NFQTensor *w,
         const float  *ws = w->s + (size_t) i * ng;
         float val = 0.0f;
         for (int g = 0; g < ng; g++) {
-            int32_t ival = nf_group_dot(x->q + g * gs, wr + g * gs, gs);
+            int32_t ival = tl_group_dot(x->q + g * gs, wr + g * gs, gs);
             val += (float) ival * ws[g] * x->s[g];
         }
         xout[i] = val;
     }
 }
 
-void nf_gemm_dot(float *out, const NFQTensor *x, const NFQTensor *w,
+void tl_gemm_dot(float *out, const TLQTensor *x, const TLQTensor *w,
                  int m, int n, int d, int gs) {
     const int ng = n / gs;
     int i;
@@ -64,7 +64,7 @@ void nf_gemm_dot(float *out, const NFQTensor *x, const NFQTensor *w,
             const float  *xs = x->s + (size_t) r * ng;
             float val = 0.0f;
             for (int g = 0; g < ng; g++) {
-                int32_t ival = nf_group_dot(xr + g * gs, wr + g * gs, gs);
+                int32_t ival = tl_group_dot(xr + g * gs, wr + g * gs, gs);
                 val += (float) ival * ws[g] * xs[g];
             }
             out[(size_t) r * d + i] = val;
@@ -74,13 +74,13 @@ void nf_gemm_dot(float *out, const NFQTensor *x, const NFQTensor *w,
 
 #else  // not aarch64: never selected by dispatch, but keep the symbols linkable
 
-void nf_matmul_dot(float *xout, const NFQTensor *x, const NFQTensor *w,
+void tl_matmul_dot(float *xout, const TLQTensor *x, const TLQTensor *w,
                    int n, int d, int gs) {
-    nf_matmul_scalar(xout, x, w, n, d, gs);
+    tl_matmul_scalar(xout, x, w, n, d, gs);
 }
-void nf_gemm_dot(float *out, const NFQTensor *x, const NFQTensor *w,
+void tl_gemm_dot(float *out, const TLQTensor *x, const TLQTensor *w,
                  int m, int n, int d, int gs) {
-    nf_gemm_scalar(out, x, w, m, n, d, gs);
+    tl_gemm_scalar(out, x, w, m, n, d, gs);
 }
 
 #endif

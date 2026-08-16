@@ -1,10 +1,10 @@
-// NeonForge: Armv8.6 I8MM (vmmlaq_s32) kernel.
+// turbollama: Armv8.6 I8MM (vmmlaq_s32) kernel.
 //
 // SMMLA is a matrix-matrix instruction: one issue computes a full 2x2 int32
 // tile from two 2x8 int8 operands, i.e. 4 dot products of length 8 = 64 MACs,
 // versus 16 MACs for SDOT. It therefore only pays off when there are at least
 // two activation rows to feed it -- prefill / prompt processing, not
-// single-token decode. That is exactly why NeonForge routes prefill here and
+// single-token decode. That is exactly why turbollama routes prefill here and
 // decode to SDOT, rather than pretending one kernel wins everywhere.
 //
 // Compiled with -march=armv8.2-a+i8mm, entered only after a runtime HWCAP2_I8MM
@@ -15,7 +15,7 @@
 #if defined(__aarch64__) && defined(__ARM_FEATURE_MATMUL_INT8)
 #include <arm_neon.h>
 
-void nf_gemm_i8mm(float *out, const NFQTensor *x, const NFQTensor *w,
+void tl_gemm_i8mm(float *out, const TLQTensor *x, const TLQTensor *w,
                   int m, int n, int d, int gs) {
     const int ng = n / gs;
     const int mpair = m & ~1;   // largest even count of activation rows
@@ -83,24 +83,24 @@ void nf_gemm_i8mm(float *out, const NFQTensor *x, const NFQTensor *w,
 
     // Odd leftovers (odd m and/or odd d) fall back to the SDOT path.
     if (mpair != m) {
-        NFQTensor xt = { x->q + (size_t) mpair * n, x->s + (size_t) mpair * ng };
+        TLQTensor xt = { x->q + (size_t) mpair * n, x->s + (size_t) mpair * ng };
         float *tail = out + (size_t) mpair * d;
-        nf_gemm_dot(tail, &xt, w, m - mpair, n, d, gs);
+        tl_gemm_dot(tail, &xt, w, m - mpair, n, d, gs);
     }
     if (dpair != d) {
         for (int r = 0; r < mpair; r++) {
-            NFQTensor xr = { x->q + (size_t) r * n, x->s + (size_t) r * ng };
-            NFQTensor wt = { w->q + (size_t) dpair * n, w->s + (size_t) dpair * ng };
-            nf_matmul_dot(out + (size_t) r * d + dpair, &xr, &wt, n, d - dpair, gs);
+            TLQTensor xr = { x->q + (size_t) r * n, x->s + (size_t) r * ng };
+            TLQTensor wt = { w->q + (size_t) dpair * n, w->s + (size_t) dpair * ng };
+            tl_matmul_dot(out + (size_t) r * d + dpair, &xr, &wt, n, d - dpair, gs);
         }
     }
 }
 
 #else  // no i8mm at compile time: never selected by dispatch
 
-void nf_gemm_i8mm(float *out, const NFQTensor *x, const NFQTensor *w,
+void tl_gemm_i8mm(float *out, const TLQTensor *x, const TLQTensor *w,
                   int m, int n, int d, int gs) {
-    nf_gemm_dot(out, x, w, m, n, d, gs);
+    tl_gemm_dot(out, x, w, m, n, d, gs);
 }
 
 #endif

@@ -1,9 +1,9 @@
-// NeonForge: portable scalar baseline. Compiled with plain -O3 (no -march),
+// turbollama: portable scalar baseline. Compiled with plain -O3 (no -march),
 // so this is exactly what a stock build of llama2.c/runq.c gives you.
 // SPDX-License-Identifier: MIT
 #include "kernels.h"
 
-void nf_matmul_scalar(float *xout, const NFQTensor *x, const NFQTensor *w,
+void tl_matmul_scalar(float *xout, const TLQTensor *x, const TLQTensor *w,
                       int n, int d, int gs) {
     int i;
 #if defined(_OPENMP)
@@ -23,7 +23,7 @@ void nf_matmul_scalar(float *xout, const NFQTensor *x, const NFQTensor *w,
     }
 }
 
-void nf_gemm_scalar(float *out, const NFQTensor *x, const NFQTensor *w,
+void tl_gemm_scalar(float *out, const TLQTensor *x, const TLQTensor *w,
                     int m, int n, int d, int gs) {
     int i;
 #if defined(_OPENMP)

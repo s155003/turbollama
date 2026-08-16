@@ -1,4 +1,4 @@
-// NeonForge kernel benchmark + correctness harness.
+// turbollama kernel benchmark + correctness harness.
 //
 // Correctness note: every kernel accumulates each quantization group into an
 // int32 before touching float, and integer addition is associative, so the
@@ -28,15 +28,15 @@ static float rand_scale(void) {
     return 1e-3f + (float) ((rng >> 16) & 0x3FF) * 1e-6f;
 }
 
-static NFQTensor alloc_qt(size_t elems, int gs) {
-    NFQTensor t;
+static TLQTensor alloc_qt(size_t elems, int gs) {
+    TLQTensor t;
     t.q = (int8_t *) malloc(elems);
     t.s = (float *) malloc((elems / gs) * sizeof(float));
     for (size_t i = 0; i < elems; i++) t.q[i] = rand_i8();
     for (size_t i = 0; i < elems / gs; i++) t.s[i] = rand_scale();
     return t;
 }
-static void free_qt(NFQTensor *t) { free(t->q); free(t->s); }
+static void free_qt(TLQTensor *t) { free(t->q); free(t->s); }
 
 // Median of a small sample, plus min and relative spread.
 static int cmpd(const void *a, const void *b) {
@@ -55,15 +55,15 @@ static stat_t summarize(double *v, int n) {
 }
 
 // Emulated runs (QEMU, no Arm hardware) only need to prove correctness, and a
-// full timing sweep under emulation takes minutes. NEONFORGE_QUICK=1 trims the
+// full timing sweep under emulation takes minutes. TURBOLLAMA_QUICK=1 trims the
 // trial count and the shape list; timings from such a run are meaningless and
 // the harness says so.
 #define MAX_TRIALS 16
 static int TRIALS = 7;
 static int quick = 0;
 
-typedef void (*mv_fn)(float *, const NFQTensor *, const NFQTensor *, int, int, int);
-typedef void (*mm_fn)(float *, const NFQTensor *, const NFQTensor *, int, int, int, int);
+typedef void (*mv_fn)(float *, const TLQTensor *, const TLQTensor *, int, int, int);
+typedef void (*mm_fn)(float *, const TLQTensor *, const TLQTensor *, int, int, int, int);
 
 static int failures = 0;
 
@@ -94,8 +94,8 @@ static void bench_matvec(int n, int d, int gs) {
         printf("  matvec  n=%d skipped: group size %d does not divide n\n", n, gs);
         return;
     }
-    NFQTensor w = alloc_qt((size_t) n * d, gs);
-    NFQTensor x = alloc_qt((size_t) n, gs);
+    TLQTensor w = alloc_qt((size_t) n * d, gs);
+    TLQTensor x = alloc_qt((size_t) n, gs);
     float *ref = malloc(d * sizeof(float));
     float *got = malloc(d * sizeof(float));
     double t[MAX_TRIALS];
@@ -104,7 +104,7 @@ static void bench_matvec(int n, int d, int gs) {
 
     for (int r = 0; r < TRIALS; r++) {
         double t0 = now_sec();
-        nf_matmul_scalar(ref, &x, &w, n, d, gs);
+        tl_matmul_scalar(ref, &x, &w, n, d, gs);
         t[r] = now_sec() - t0;
     }
     stat_t sc = summarize(t, TRIALS);
@@ -112,10 +112,10 @@ static void bench_matvec(int n, int d, int gs) {
     printf("    %-10s %8.3f ms   %6.2f GOP/s   (spread %.1f%%)\n",
            "scalar", sc.med * 1e3, ops / sc.min * 1e-9, sc.spread);
 
-    if (nf_cpu_has_dotprod()) {
+    if (tl_cpu_has_dotprod()) {
         for (int r = 0; r < TRIALS; r++) {
             double t0 = now_sec();
-            nf_matmul_dot(got, &x, &w, n, d, gs);
+            tl_matmul_dot(got, &x, &w, n, d, gs);
             t[r] = now_sec() - t0;
         }
         stat_t dp = summarize(t, TRIALS);
@@ -134,8 +134,8 @@ static void bench_gemm(int m, int n, int d, int gs) {
         printf("  gemm    n=%d skipped: group size %d does not divide n\n", n, gs);
         return;
     }
-    NFQTensor w = alloc_qt((size_t) n * d, gs);
-    NFQTensor x = alloc_qt((size_t) m * n, gs);
+    TLQTensor w = alloc_qt((size_t) n * d, gs);
+    TLQTensor x = alloc_qt((size_t) m * n, gs);
     float *ref = malloc((size_t) m * d * sizeof(float));
     float *got = malloc((size_t) m * d * sizeof(float));
     double t[MAX_TRIALS];
@@ -145,7 +145,7 @@ static void bench_gemm(int m, int n, int d, int gs) {
 
     for (int r = 0; r < TRIALS; r++) {
         double t0 = now_sec();
-        nf_gemm_scalar(ref, &x, &w, m, n, d, gs);
+        tl_gemm_scalar(ref, &x, &w, m, n, d, gs);
         t[r] = now_sec() - t0;
     }
     stat_t sc = summarize(t, TRIALS);
@@ -153,10 +153,10 @@ static void bench_gemm(int m, int n, int d, int gs) {
     printf("    %-10s %8.3f ms   %6.2f GOP/s   (spread %.1f%%)\n",
            "scalar", sc.med * 1e3, ops / sc.min * 1e-9, sc.spread);
 
-    if (nf_cpu_has_dotprod()) {
+    if (tl_cpu_has_dotprod()) {
         for (int r = 0; r < TRIALS; r++) {
             double t0 = now_sec();
-            nf_gemm_dot(got, &x, &w, m, n, d, gs);
+            tl_gemm_dot(got, &x, &w, m, n, d, gs);
             t[r] = now_sec() - t0;
         }
         stat_t dp = summarize(t, TRIALS);
@@ -164,11 +164,11 @@ static void bench_gemm(int m, int n, int d, int gs) {
                "dotprod", dp.med * 1e3, ops / dp.min * 1e-9, dp.spread, sc.med / dp.med);
         check_exact("dotprod", ref, got, (size_t) m * d);
 
-        if (nf_cpu_has_i8mm()) {
+        if (tl_cpu_has_i8mm()) {
             memset(got, 0, (size_t) m * d * sizeof(float));
             for (int r = 0; r < TRIALS; r++) {
                 double t0 = now_sec();
-                nf_gemm_i8mm(got, &x, &w, m, n, d, gs);
+                tl_gemm_i8mm(got, &x, &w, m, n, d, gs);
                 t[r] = now_sec() - t0;
             }
             stat_t mm = summarize(t, TRIALS);
@@ -190,19 +190,19 @@ int main(int argc, char **argv) {
     int gs = 32;
     if (argc > 1) gs = atoi(argv[1]);
 
-    const char *q = getenv("NEONFORGE_QUICK");
+    const char *q = getenv("TURBOLLAMA_QUICK");
     if (q && *q && strcmp(q, "0") != 0) { quick = 1; TRIALS = 1; }
 
-    printf("NeonForge kernel benchmark\n");
+    printf("turbollama kernel benchmark\n");
     if (quick) {
         printf("  MODE       : QUICK -- correctness only.\n");
         printf("               Timings below are NOT valid performance data\n");
         printf("               (1 trial, and typically run under emulation).\n");
     }
     printf("  group size : %d\n", gs);
-    printf("  dotprod    : %s\n", nf_cpu_has_dotprod() ? "yes" : "no");
-    printf("  i8mm       : %s\n", nf_cpu_has_i8mm() ? "yes" : "no");
-    printf("  auto-ISA   : %s\n\n", nf_isa_name(nf_select_isa()));
+    printf("  dotprod    : %s\n", tl_cpu_has_dotprod() ? "yes" : "no");
+    printf("  i8mm       : %s\n", tl_cpu_has_i8mm() ? "yes" : "no");
+    printf("  auto-ISA   : %s\n\n", tl_isa_name(tl_select_isa()));
 
     // Shapes taken straight from the TinyLlama checkpoints we run end-to-end:
     //   stories15M : dim=288  hidden=768

@@ -1,11 +1,11 @@
 /* Inference for Llama-2 Transformer model in pure C, int8 quantized forward pass.
  *
- * NEONFORGE: derived from llama2.c/runq.c by Andrej Karpathy (MIT). The
- * transformer, tokenizer and sampler are upstream and untouched. NeonForge
+ * TURBOLLAMA: derived from llama2.c/runq.c by Andrej Karpathy (MIT). The
+ * transformer, tokenizer and sampler are upstream and untouched. turbollama
  * changes are confined to:
  *   - matmul()  -> forwards to the runtime-dispatched kernels in src/kernels*.c
  *   - generate() -> separates prefill (time-to-first-token) from decode (tok/s)
- * Every edit is marked with a "NEONFORGE:" comment.
+ * Every edit is marked with a "TURBOLLAMA:" comment.
  */
 
 #include "kernels.h"
@@ -324,25 +324,25 @@ void softmax(float* x, int size) {
     }
 }
 
-// NEONFORGE: the whole point of the project. Upstream's scalar loop now lives
+// TURBOLLAMA: the whole point of the project. Upstream's scalar loop now lives
 // in src/kernels_scalar.c as the baseline; this call site picks the best kernel
 // for the running CPU at runtime (AT_HWCAP), so the same binary is fast on a
 // Neoverse server part and still correct on an Armv8.0 core.
 //
-// QuantizedTensor and NFQTensor are the same two pointers in the same order;
+// QuantizedTensor and TLQTensor are the same two pointers in the same order;
 // assert that rather than trusting it, so a future upstream change can't
 // silently reinterpret memory.
-_Static_assert(sizeof(QuantizedTensor) == sizeof(NFQTensor),
-               "QuantizedTensor/NFQTensor layout drift");
-_Static_assert(offsetof(QuantizedTensor, q) == offsetof(NFQTensor, q),
-               "QuantizedTensor/NFQTensor field q offset drift");
-_Static_assert(offsetof(QuantizedTensor, s) == offsetof(NFQTensor, s),
-               "QuantizedTensor/NFQTensor field s offset drift");
+_Static_assert(sizeof(QuantizedTensor) == sizeof(TLQTensor),
+               "QuantizedTensor/TLQTensor layout drift");
+_Static_assert(offsetof(QuantizedTensor, q) == offsetof(TLQTensor, q),
+               "QuantizedTensor/TLQTensor field q offset drift");
+_Static_assert(offsetof(QuantizedTensor, s) == offsetof(TLQTensor, s),
+               "QuantizedTensor/TLQTensor field s offset drift");
 
 void matmul(float* xout, QuantizedTensor *x, QuantizedTensor *w, int n, int d) {
     // W (d,n) @ x (n,) -> xout (d,)
     // by far the most amount of time is spent inside this little function
-    nf_matmul(xout, (const NFQTensor*) x, (const NFQTensor*) w, n, d, GS);
+    tl_matmul(xout, (const TLQTensor*) x, (const TLQTensor*) w, n, d, GS);
 }
 
 float* forward(Transformer* transformer, int token, int pos) {
@@ -862,7 +862,7 @@ void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, 
         exit(EXIT_FAILURE);
     }
 
-    // NEONFORGE: upstream reports one blended tok/s over prompt+generation.
+    // TURBOLLAMA: upstream reports one blended tok/s over prompt+generation.
     // Prefill and decode are different workloads with different bottlenecks, so
     // we time them separately and report time-to-first-token alongside the
     // steady-state decode rate. Both are named metrics in the challenge rubric.
@@ -883,7 +883,7 @@ void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, 
             // if we are still processing the input prompt, force the next prompt token
             next = prompt_tokens[pos + 1];
         } else {
-            // NEONFORGE: this forward produced the first generated token -> TTFT
+            // TURBOLLAMA: this forward produced the first generated token -> TTFT
             if (t_first == 0) { t_first = time_in_ms(); }
             next = sample(sampler, logits);
             decoded++;
@@ -901,11 +901,11 @@ void generate(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler, 
     }
     printf("\n");
 
-    // NEONFORGE: machine-readable report so CI can diff kernels across runs.
+    // TURBOLLAMA: machine-readable report so CI can diff kernels across runs.
     long t_end = time_in_ms();
     if (t_first > 0) {
         double ttft_ms = (double)(t_first - t_start);
-        fprintf(stderr, "isa: %s\n", nf_isa_name(nf_select_isa()));
+        fprintf(stderr, "isa: %s\n", tl_isa_name(tl_select_isa()));
         fprintf(stderr, "prompt tokens: %d\n", num_prompt_tokens);
         fprintf(stderr, "time to first token (ms): %.2f\n", ttft_ms);
         // the first token's cost is attributed to TTFT, so the steady-state

@@ -1,6 +1,6 @@
-// NeonForge: runtime ISA detection + kernel dispatch.
+// turbollama: runtime ISA detection + kernel dispatch.
 // One binary, built once, picks the best path for whatever Arm core it lands
-// on. Set NEONFORGE_ISA=scalar|dotprod|i8mm to pin a path (used by benchmarks).
+// on. Set TURBOLLAMA_ISA=scalar|dotprod|i8mm to pin a path (used by benchmarks).
 // SPDX-License-Identifier: MIT
 #include "kernels.h"
 #include <stdlib.h>
@@ -16,7 +16,7 @@
 #endif
 #endif
 
-int nf_cpu_has_dotprod(void) {
+int tl_cpu_has_dotprod(void) {
 #if defined(__aarch64__) && defined(__linux__)
     return (getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0;
 #elif defined(__aarch64__) && defined(__APPLE__)
@@ -26,7 +26,7 @@ int nf_cpu_has_dotprod(void) {
 #endif
 }
 
-int nf_cpu_has_i8mm(void) {
+int tl_cpu_has_i8mm(void) {
 #if defined(__aarch64__) && defined(__linux__)
     return (getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0;
 #else
@@ -34,48 +34,48 @@ int nf_cpu_has_i8mm(void) {
 #endif
 }
 
-nf_isa_t nf_select_isa(void) {
-    const char *force = getenv("NEONFORGE_ISA");
+tl_isa_t tl_select_isa(void) {
+    const char *force = getenv("TURBOLLAMA_ISA");
     if (force && *force) {
-        if (!strcmp(force, "scalar"))  return NF_ISA_SCALAR;
-        if (!strcmp(force, "dotprod")) return NF_ISA_DOTPROD;
-        if (!strcmp(force, "i8mm"))    return NF_ISA_I8MM;
+        if (!strcmp(force, "scalar"))  return TL_ISA_SCALAR;
+        if (!strcmp(force, "dotprod")) return TL_ISA_DOTPROD;
+        if (!strcmp(force, "i8mm"))    return TL_ISA_I8MM;
     }
-    if (nf_cpu_has_i8mm())    return NF_ISA_I8MM;
-    if (nf_cpu_has_dotprod()) return NF_ISA_DOTPROD;
-    return NF_ISA_SCALAR;
+    if (tl_cpu_has_i8mm())    return TL_ISA_I8MM;
+    if (tl_cpu_has_dotprod()) return TL_ISA_DOTPROD;
+    return TL_ISA_SCALAR;
 }
 
-const char *nf_isa_name(nf_isa_t isa) {
+const char *tl_isa_name(tl_isa_t isa) {
     switch (isa) {
-        case NF_ISA_I8MM:    return "i8mm";
-        case NF_ISA_DOTPROD: return "dotprod";
+        case TL_ISA_I8MM:    return "i8mm";
+        case TL_ISA_DOTPROD: return "dotprod";
         default:             return "scalar";
     }
 }
 
-void nf_matmul(float *xout, const NFQTensor *x, const NFQTensor *w,
+void tl_matmul(float *xout, const TLQTensor *x, const TLQTensor *w,
                int n, int d, int gs) {
     // Decode is a matrix-vector product; SMMLA has no second row to fill, so
     // SDOT is the best available kernel even on an i8mm-capable core.
-    switch (nf_select_isa()) {
-        case NF_ISA_I8MM:
-        case NF_ISA_DOTPROD: nf_matmul_dot(xout, x, w, n, d, gs); break;
-        default:             nf_matmul_scalar(xout, x, w, n, d, gs); break;
+    switch (tl_select_isa()) {
+        case TL_ISA_I8MM:
+        case TL_ISA_DOTPROD: tl_matmul_dot(xout, x, w, n, d, gs); break;
+        default:             tl_matmul_scalar(xout, x, w, n, d, gs); break;
     }
 }
 
-void nf_gemm(float *out, const NFQTensor *x, const NFQTensor *w,
+void tl_gemm(float *out, const TLQTensor *x, const TLQTensor *w,
              int m, int n, int d, int gs) {
-    nf_isa_t isa = nf_select_isa();
+    tl_isa_t isa = tl_select_isa();
     if (m == 1) {  // degenerate batch: matvec rules apply
-        if (isa == NF_ISA_SCALAR) nf_gemm_scalar(out, x, w, 1, n, d, gs);
-        else                      nf_gemm_dot(out, x, w, 1, n, d, gs);
+        if (isa == TL_ISA_SCALAR) tl_gemm_scalar(out, x, w, 1, n, d, gs);
+        else                      tl_gemm_dot(out, x, w, 1, n, d, gs);
         return;
     }
     switch (isa) {
-        case NF_ISA_I8MM:    nf_gemm_i8mm(out, x, w, m, n, d, gs); break;
-        case NF_ISA_DOTPROD: nf_gemm_dot(out, x, w, m, n, d, gs); break;
-        default:             nf_gemm_scalar(out, x, w, m, n, d, gs); break;
+        case TL_ISA_I8MM:    tl_gemm_i8mm(out, x, w, m, n, d, gs); break;
+        case TL_ISA_DOTPROD: tl_gemm_dot(out, x, w, m, n, d, gs); break;
+        default:             tl_gemm_scalar(out, x, w, m, n, d, gs); break;
     }
 }

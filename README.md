@@ -14,7 +14,7 @@ matrix multiply. In [llama2.c](https://github.com/karpathy/llama2.c)'s
 comment says *"by far the most amount of time is spent inside this little
 function."*
 
-NeonForge replaces it with three hand-written implementations and picks
+turbollama replaces it with three hand-written implementations and picks
 between them **at runtime**:
 
 | kernel | instruction | needs | used for |
@@ -39,7 +39,7 @@ still exploits `SMMLA` on a Neoverse server part.
 ![Prefill GEMM throughput on Arm Neoverse-N2](assets/chart-gemm.png)
 
 Hardware: **Arm Neoverse-N2**, `asimddp i8mm bf16 sve sve2`, group size 32,
-single-threaded. [Run 31848160035](https://github.com/s155003/neonforge/actions/runs/31848160035).
+single-threaded. [Run 31848160035](https://github.com/s155003/turbollama/actions/runs/31848160035).
 
 **End-to-end, stories15M int8** — same binary, same weights, same seed:
 
@@ -86,7 +86,7 @@ half of `SMMLA`'s operand is padding and half its output is discarded.
 The instruction needs at least two rows to feed it, which is exactly what
 prompt processing has and what token generation does not.
 
-So NeonForge routes **prefill through `i8mm`** and **decode through
+So turbollama routes **prefill through `i8mm`** and **decode through
 `SDOT`**, and reports the two phases as separate metrics rather than
 blending them into one tokens/sec figure that hides which one moved.
 Claiming an `SMMLA` speedup on decode would be the fastest way to lose
@@ -121,7 +121,7 @@ report and end-to-end results into the job summary.
 ### Option B — on your own Arm64 machine
 
 ```bash
-git clone https://github.com/<you>/neonforge && cd neonforge
+git clone https://github.com/<you>/turbollama && cd turbollama
 make all
 
 # kernel microbenchmark + bit-exactness check
@@ -136,11 +136,11 @@ python3 tools/quantize.py stories15M.bin stories15M_q80.bin
 ./scripts/e2e_bench.sh
 ```
 
-Pin a specific kernel with the `NEONFORGE_ISA` environment variable:
+Pin a specific kernel with the `TURBOLLAMA_ISA` environment variable:
 
 ```bash
-NEONFORGE_ISA=scalar  ./build/runq_nf stories15M_q80.bin -z tokenizer.bin -t 0
-NEONFORGE_ISA=dotprod ./build/runq_nf stories15M_q80.bin -z tokenizer.bin -t 0
+TURBOLLAMA_ISA=scalar  ./build/runq_tl stories15M_q80.bin -z tokenizer.bin -t 0
+TURBOLLAMA_ISA=dotprod ./build/runq_tl stories15M_q80.bin -z tokenizer.bin -t 0
 ```
 
 ## The benchmark is built to be argued with
@@ -176,11 +176,11 @@ Written for this project:
 - `scripts/e2e_bench.sh` — end-to-end comparison + identical-output check
 - `.github/workflows/bench.yml` — the reproducible Arm64 run
 
-`src/runq_nf.c` is a derivative of `vendor/runq.c`: the transformer,
-tokenizer and sampler are upstream and untouched; NeonForge redirects the
+`src/runq_tl.c` is a derivative of `vendor/runq.c`: the transformer,
+tokenizer and sampler are upstream and untouched; turbollama redirects the
 matmul call site to the dispatching kernels and splits the timing into
-TTFT and decode. Every edit carries a `NEONFORGE:` comment, so
-`diff vendor/runq.c src/runq_nf.c` shows the entire contribution.
+TTFT and decode. Every edit carries a `TURBOLLAMA:` comment, so
+`diff vendor/runq.c src/runq_tl.c` shows the entire contribution.
 
 ## License
 

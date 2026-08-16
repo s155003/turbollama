@@ -1,4 +1,4 @@
-# NeonForge build.
+# turbollama build.
 #
 # The scalar baseline is deliberately compiled with plain -O3 and NO -march
 # override: that is exactly what a stock `make runq` of llama2.c produces, so
@@ -50,8 +50,8 @@ bench: $(BUILD)/bench_kernel
 $(BUILD)/bench_kernel: $(CORE_OBJ) $(BUILD)/bench/bench_kernel.o
 	$(CC) $(CFLAGS) $^ -o $@ $(LDLIBS)
 
-runq: $(BUILD)/runq_nf
-$(BUILD)/runq_nf: $(CORE_OBJ) $(BUILD)/src/runq_nf.o
+runq: $(BUILD)/runq_tl
+$(BUILD)/runq_tl: $(CORE_OBJ) $(BUILD)/src/runq_tl.o
 	$(CC) $(CFLAGS) $^ -o $@ $(LDLIBS)
 
 test: bench

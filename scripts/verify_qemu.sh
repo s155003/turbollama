@@ -4,7 +4,7 @@
 # Cross-compiles with aarch64-linux-gnu-gcc and executes under QEMU user-mode
 # emulation with -cpu max, which exposes both dotprod and i8mm. This proves
 # correctness only -- emulated timings are meaningless, so the harness runs in
-# NEONFORGE_QUICK mode and labels them as such.
+# TURBOLLAMA_QUICK mode and labels them as such.
 #
 #   sudo apt install gcc-aarch64-linux-gnu qemu-user
 #   ./scripts/verify_qemu.sh
@@ -35,4 +35,4 @@ fi
 
 echo
 echo "== running under QEMU (-cpu max: dotprod + i8mm available) =="
-NEONFORGE_QUICK=1 "$QEMU" -L "$SYSROOT" -cpu max ./build/bench_kernel "$GS"
+TURBOLLAMA_QUICK=1 "$QEMU" -L "$SYSROOT" -cpu max ./build/bench_kernel "$GS"

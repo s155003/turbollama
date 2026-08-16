@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Convert a legacy fp32 llama2.c checkpoint (.bin) into the int8 "version 2"
-format that runq.c / runq_nf.c consume.
+format that runq.c / runq_tl.c consume.
 
 Upstream's export.py does this too, but only from a PyTorch .pt checkpoint --
 which drags a ~2.5 GB torch install into CI just to divide some floats. This

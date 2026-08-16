@@ -10,7 +10,7 @@ on:
 
 jobs:
   arm64:
-    name: NeonForge on ${{ matrix.runner }}
+    name: turbollama on ${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -101,6 +101,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: neonforge-results-${{ matrix.runner }}
+          name: turbollama-results-${{ matrix.runner }}
           path: results/
           if-no-files-found: ignore
