@@ -71,6 +71,13 @@ for isa in "${ISAS[@]}"; do
     STATUS=1
   fi
 done
+
+# Print the digests too. cmp already proved equality; the hashes make the claim
+# independently checkable by anyone reading the log, without trusting our cmp.
+if command -v sha256sum >/dev/null; then
+  echo
+  sha256sum "$OUT"/text_*.txt
+fi
 echo
 
 # --- markdown table for the job summary / README ---

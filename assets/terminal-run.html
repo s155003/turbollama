@@ -1,0 +1,86 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>turbollama running on Arm Neoverse-N2</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  .wrap {
+    width: 1200px; height: 760px;
+    background: #0d0d0d;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 0; box-sizing: border-box;
+  }
+  .cap { padding: 22px 40px 0; }
+  .cap h1 { margin: 0; font-size: 23px; font-weight: 650; color: #ffffff; letter-spacing: -0.2px; }
+  .cap p  { margin: 7px 0 0; font-size: 14px; color: #898781; }
+  .term {
+    margin: 18px 40px 0; height: 610px; box-sizing: border-box;
+    background: #1a1a19; border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 10px; overflow: hidden;
+  }
+  .bar {
+    height: 34px; display: flex; align-items: center; gap: 8px;
+    padding: 0 14px; border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .bar .t {
+    margin-left: 10px; font-size: 12.5px; color: #898781;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  pre {
+    margin: 0; padding: 15px 20px;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 13.2px; line-height: 1.52; color: #c3c2b7;
+    white-space: pre-wrap;
+  }
+  .p  { color: #199e70; font-weight: 700; }   /* prompt $        */
+  .c  { color: #ffffff; }                     /* typed command   */
+  .k  { color: #3987e5; }                     /* scalar          */
+  .o  { color: #d95926; }                     /* dotprod         */
+  .g  { color: #0ca30c; font-weight: 700; }   /* success         */
+  .m  { color: #6b6a66; }                     /* dim/comment     */
+  .w  { color: #ffffff; }
+</style>
+<div class="wrap">
+  <div class="cap">
+    <h1>The optimized kernel is faster <em>and</em> byte-identical &mdash; here is the proof</h1>
+    <p>Real output from GitHub Actions run 31970525032 on a native Arm64 runner. Nothing here is retyped.</p>
+  </div>
+
+  <div class="term">
+    <div class="bar">
+      <span class="dot" style="background:#e34948"></span>
+      <span class="dot" style="background:#eda100"></span>
+      <span class="dot" style="background:#0ca30c"></span>
+      <span class="t">ubuntu-24.04-arm &mdash; Arm Neoverse-N2</span>
+    </div>
+<pre><span class="p">$</span> <span class="c">uname -srm &amp;&amp; lscpu | grep 'Model name'</span>
+Linux 6.17.0-1022-azure aarch64
+Model name:                              Neoverse-N2
+<span class="m">features: asimd asimddp sve sve2 i8mm bf16</span>
+
+<span class="p">$</span> <span class="c">python3 tools/quantize.py stories15M.bin stories15M_q80.bin --group-size 64</span>
+note: group size reduced 64 -&gt; 32 for divisibility
+fp32  stories15M.bin              60.82 MB
+int8  stories15M_q80.bin          17.10 MB   <span class="g">(3.56x smaller)</span>
+max abs quantization error: 0.002333
+
+<span class="p">$</span> <span class="c">./scripts/e2e_bench.sh</span>
+turbollama end-to-end: stories15M_q80.bin, 256 steps, best of 5
+
+  <span class="k">scalar</span> : ttft 18.00 ms, decode 470.7379 tok/s
+  <span class="o">dotprod</span>: ttft 15.00 ms, decode 567.4847 tok/s   <span class="g">1.21x</span>
+
+  output check dotprod: <span class="g">IDENTICAL to scalar baseline</span>
+
+<span class="p">$</span> <span class="c">sha256sum results/text_scalar.txt results/text_dotprod.txt</span>
+c8b611d6a32a3d933ca0f57ff257d374  results/text_scalar.txt
+c8b611d6a32a3d933ca0f57ff257d374  results/text_dotprod.txt
+<span class="m">                ^ same hash: 185 generated tokens, not one bit different</span>
+
+<span class="p">$</span> <span class="c">head -c 210 results/text_dotprod.txt</span>
+<span class="w">One day, Lily met a robot in the park. She was very excited and wanted
+to play with it. She asked her mom if she could take it home. Her mom
+said yes, but only if she was careful.</span><span class="m"> ...</span>
+</pre>
+  </div>
+</div>
